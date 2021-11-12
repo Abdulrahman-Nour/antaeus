@@ -85,7 +85,7 @@ fun scheduleMonthlyBilling(billingService: BillingService, invoiceService: Invoi
         launch(Dispatchers.Default) {
             while (true) {
                 delay(millisUntilNextMonth)
-                billingService.chargeInvoices(invoiceService.fetchAll())
+                billingService.chargeInvoices(invoiceService.fetchPending())
             }
         }
     }
