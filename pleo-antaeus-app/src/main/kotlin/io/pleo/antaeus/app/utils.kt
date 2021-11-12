@@ -6,6 +6,7 @@ import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.models.InvoiceStatus
 import io.pleo.antaeus.models.Money
 import java.math.BigDecimal
+import java.util.*
 import kotlin.random.Random
 
 // This will create all schemas and setup initial data
@@ -38,3 +39,22 @@ internal fun getPaymentProvider(): PaymentProvider {
         }
     }
 }
+
+internal val millisUntilNextMonth: Long
+    get() = timeNextMonthInMillis - timeNowInMillis
+
+private val timeNowInMillis: Long
+    get() = System.currentTimeMillis()
+
+private val timeNextMonthInMillis: Long
+    get() = Calendar.getInstance().apply {
+        // remove time component, so that invoices are charged at the start of the day
+        set(Calendar.HOUR_OF_DAY, getActualMinimum(Calendar.HOUR_OF_DAY))
+        set(Calendar.MINUTE, getActualMinimum(Calendar.MINUTE))
+        set(Calendar.SECOND, getActualMinimum(Calendar.SECOND))
+        set(Calendar.MILLISECOND, getActualMinimum(Calendar.MILLISECOND))
+
+        // set calendar instance to the first day of next month
+        set(Calendar.DAY_OF_MONTH, 1)
+        set(Calendar.MONTH, get(Calendar.MONTH) + 1)
+    }.timeInMillis

@@ -15,6 +15,11 @@ import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.data.CustomerTable
 import io.pleo.antaeus.data.InvoiceTable
 import io.pleo.antaeus.rest.AntaeusRest
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import millisUntilNextMonth
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.StdOutSqlLogger
@@ -61,11 +66,26 @@ fun main() {
     val customerService = CustomerService(dal = dal)
 
     // This is _your_ billing service to be included where you see fit
-    val billingService = BillingService(paymentProvider = paymentProvider)
+    val billingService = BillingService(dal = dal, paymentProvider = paymentProvider)
+
+    scheduleMonthlyBilling(billingService, invoiceService)
+
+
 
     // Create REST web service
     AntaeusRest(
         invoiceService = invoiceService,
         customerService = customerService
     ).run()
+}
+
+fun scheduleMonthlyBilling(billingService: BillingService, invoiceService: InvoiceService) {
+    runBlocking {
+        launch(Dispatchers.Default) {
+            while (true) {
+                delay(millisUntilNextMonth)
+                billingService.chargeInvoices(invoiceService.fetchAll())
+            }
+        }
+    }
 }

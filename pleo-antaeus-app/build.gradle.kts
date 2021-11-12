@@ -16,4 +16,6 @@ dependencies {
     implementation(project(":pleo-antaeus-rest"))
     implementation(project(":pleo-antaeus-core"))
     implementation(project(":pleo-antaeus-models"))
+
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.5.2-native-mt")
 }
