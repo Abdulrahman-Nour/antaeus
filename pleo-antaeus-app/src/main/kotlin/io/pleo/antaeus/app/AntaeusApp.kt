@@ -15,11 +15,7 @@ import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.data.CustomerTable
 import io.pleo.antaeus.data.InvoiceTable
 import io.pleo.antaeus.rest.AntaeusRest
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import millisUntilNextMonth
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
@@ -70,7 +66,6 @@ fun main() {
     val billingService = BillingService(dal = dal, paymentProvider = paymentProvider)
 
     scheduleMonthlyBilling(billingService, invoiceService)
-
 
     // Create REST web service
     AntaeusRest(

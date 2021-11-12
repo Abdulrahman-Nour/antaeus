@@ -24,7 +24,7 @@ class BillingService(private val dal: AntaeusDal, private val paymentProvider: P
 
     fun bill(invoice: Invoice) {
         // this check is added for the manual billing API to avoid charging the same invoice more than once
-        if (invoice.status == InvoiceStatus.PAID) throw InvoiceDoubleCharge(invoice.id)
+        if (invoice.status == InvoiceStatus.PAID) throw InvoiceDoubleChargeException(invoice.id)
 
         val attempts = 1..MAX_ATTEMPTS
         for (attempt in attempts) {
@@ -57,7 +57,7 @@ class BillingService(private val dal: AntaeusDal, private val paymentProvider: P
                 logger.error(exception) { "Invoice ${invoice.id} failed due to insufficient funds." }
             is NetworkException ->
                 logger.error(exception) { "Invoice ${invoice.id} failed because of a network error. Aborting payment." }
-            is InvoiceDoubleCharge ->
+            is InvoiceDoubleChargeException ->
                 logger.error(exception) { "Attempt to charge invoice ${invoice.id} more than once."}
             else ->
                 logger.error(exception) { "Unexpected error." }
