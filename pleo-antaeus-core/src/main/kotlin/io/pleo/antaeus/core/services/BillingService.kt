@@ -13,7 +13,15 @@ import mu.KotlinLogging
 
 class BillingService(private val dal: AntaeusDal, private val paymentProvider: PaymentProvider) {
 
-    private fun chargeInvoice(invoice: Invoice) {
+    suspend fun chargeInvoice(invoice: Invoice) {
+        coroutineScope { // launching a job per invoice to allow for multithreading.
+            launch(Dispatchers.IO + createExceptionHandler(invoice)) { bill(invoice) }
+        }
+    }
+
+    suspend fun chargeInvoices(invoices: List<Invoice>) = invoices.forEach { invoice -> chargeInvoice(invoice) }
+
+    private fun bill(invoice: Invoice) {
         val attempts = 1..MAX_ATTEMPTS
         for (attempt in attempts) {
             try {
@@ -21,27 +29,16 @@ class BillingService(private val dal: AntaeusDal, private val paymentProvider: P
                     logger.info { "invoice ${invoice.id} succeeded with amount ${invoice.amount} paid." }
 
                     // committing each invoice individually might slow things down
-                    // but will avoid certain errors
-                    // TODO look into committing changes to db into batches (use kotlin channels ?)
+                    // but will avoid certain types of errors.
+                    // TODO look into committing changes to db into batches (maybe use kotlin channels ?)
                     dal.updateInvoice(invoice.copy(status = InvoiceStatus.PAID))
 
                     break
                 } else throw InsufficientFundsException(invoice.id, invoice.customerId)
             } catch (exception: NetworkException) {
                 // we can implement exponential backoff, instead of trying a fixed amount of time.
-                if (attempt == attempts.last) throw exception // throw to outer scope
-                else logger.error(exception) { "invoice ${invoice.id} failed because of a network error. retrying $attempt / $MAX_ATTEMPTS"}
-            }
-        }
-    }
-
-    suspend fun chargeInvoices(invoices: List<Invoice>) {
-        coroutineScope {
-            invoices.forEach { invoice ->
-                // launching a job per invoice to allow for multithreading.
-                launch(Dispatchers.IO + createExceptionHandler(invoice)) {
-                    chargeInvoice(invoice)
-                }
+                if (attempt == attempts.last) throw exception // throw to outer scope / give up on retrying
+                else logger.error(exception) { "invoice ${invoice.id} failed because of a network error. retrying $attempt / $MAX_ATTEMPTS" }
             }
         }
     }
@@ -55,7 +52,7 @@ class BillingService(private val dal: AntaeusDal, private val paymentProvider: P
             is InsufficientFundsException ->
                 logger.error(exception) { "Invoice ${invoice.id} failed due to insufficient funds." }
             is NetworkException ->
-                logger.error(exception) { "Invoice ${invoice.id} failed because of a network error. Aborting payment."}
+                logger.error(exception) { "Invoice ${invoice.id} failed because of a network error. Aborting payment." }
             else ->
                 logger.error(exception) { "Unexpected error." }
         }
