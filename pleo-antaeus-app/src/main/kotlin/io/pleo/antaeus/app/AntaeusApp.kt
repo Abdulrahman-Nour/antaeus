@@ -14,12 +14,12 @@ import io.pleo.antaeus.core.services.InvoiceService
 import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.data.CustomerTable
 import io.pleo.antaeus.data.InvoiceTable
-import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.rest.AntaeusRest
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import millisUntilNextMonth
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
@@ -72,21 +72,20 @@ fun main() {
     scheduleMonthlyBilling(billingService, invoiceService)
 
 
-
     // Create REST web service
     AntaeusRest(
+        billingService = billingService,
         invoiceService = invoiceService,
         customerService = customerService
     ).run()
 }
 
+@OptIn(DelicateCoroutinesApi::class)
 fun scheduleMonthlyBilling(billingService: BillingService, invoiceService: InvoiceService) {
-    runBlocking {
-        launch(Dispatchers.Default) {
-            while (true) {
-                delay(millisUntilNextMonth)
-                billingService.chargeInvoices(invoiceService.fetchPending())
-            }
+    GlobalScope.launch(Dispatchers.Default) {
+        while (true) {
+            delay(millisUntilNextMonth)
+            billingService.chargeInvoices(invoiceService.fetchPending())
         }
     }
 }

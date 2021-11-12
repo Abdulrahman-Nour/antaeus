@@ -3,6 +3,7 @@ package io.pleo.antaeus.core.services
 import io.pleo.antaeus.core.exceptions.CurrencyMismatchException
 import io.pleo.antaeus.core.exceptions.CustomerNotFoundException
 import io.pleo.antaeus.core.exceptions.InsufficientFundsException
+import io.pleo.antaeus.core.exceptions.InvoiceDoubleCharge
 import io.pleo.antaeus.core.exceptions.NetworkException
 import io.pleo.antaeus.core.external.PaymentProvider
 import io.pleo.antaeus.data.AntaeusDal
@@ -21,7 +22,10 @@ class BillingService(private val dal: AntaeusDal, private val paymentProvider: P
 
     suspend fun chargeInvoices(invoices: List<Invoice>) = invoices.forEach { invoice -> chargeInvoice(invoice) }
 
-    private fun bill(invoice: Invoice) {
+    fun bill(invoice: Invoice) {
+        // this check is added for the manual billing API to avoid charging the same invoice more than once
+        if (invoice.status == InvoiceStatus.PAID) throw InvoiceDoubleCharge(invoice.id)
+
         val attempts = 1..MAX_ATTEMPTS
         for (attempt in attempts) {
             try {
@@ -53,6 +57,8 @@ class BillingService(private val dal: AntaeusDal, private val paymentProvider: P
                 logger.error(exception) { "Invoice ${invoice.id} failed due to insufficient funds." }
             is NetworkException ->
                 logger.error(exception) { "Invoice ${invoice.id} failed because of a network error. Aborting payment." }
+            is InvoiceDoubleCharge ->
+                logger.error(exception) { "Attempt to charge invoice ${invoice.id} more than once."}
             else ->
                 logger.error(exception) { "Unexpected error." }
         }
