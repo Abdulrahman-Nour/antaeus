@@ -2,41 +2,64 @@ package io.pleo.antaeus.core.services
 
 import io.pleo.antaeus.core.exceptions.CurrencyMismatchException
 import io.pleo.antaeus.core.exceptions.CustomerNotFoundException
+import io.pleo.antaeus.core.exceptions.InsufficientFundsException
 import io.pleo.antaeus.core.exceptions.NetworkException
 import io.pleo.antaeus.core.external.PaymentProvider
 import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.models.InvoiceStatus
+import kotlinx.coroutines.*
 import mu.KotlinLogging
-
 
 class BillingService(private val dal: AntaeusDal, private val paymentProvider: PaymentProvider) {
 
     private fun chargeInvoice(invoice: Invoice) {
-        for (i in 0..MAX_ATTEMPTS) {
+        val attempts = 1..MAX_ATTEMPTS
+        for (attempt in attempts) {
             try {
-                val isSuccessful = paymentProvider.charge(invoice)
-                if (isSuccessful) {
-                    logger.info { "invoice ${invoice.id} succeeded with amount paid ${invoice.amount}" }
+                if (paymentProvider.charge(invoice)) {
+                    logger.info { "invoice ${invoice.id} succeeded with amount ${invoice.amount} paid." }
+
+                    // committing each invoice individually might slow things down
+                    // but will avoid certain errors
+                    // TODO look into committing changes to db into batches (use kotlin channels ?)
                     dal.updateInvoice(invoice.copy(status = InvoiceStatus.PAID))
-                } else {
-                    logger.info { "invoice ${invoice.id} failed due to insufficient funds." }
-                }
-                break
-            } catch (exception: CustomerNotFoundException) {
-                logger.error(exception) { "invoice ${invoice.id} failed because customer ${invoice.customerId} doesn't exist. Aborting payment." }
-                break
-            } catch (exception: CurrencyMismatchException) {
-                logger.error(exception) { "invoice ${invoice.id} failed because customer ${invoice.customerId} is using a different currency. Aborting payment." }
-                break
+
+                    break
+                } else throw InsufficientFundsException(invoice.id, invoice.customerId)
             } catch (exception: NetworkException) {
-                logger.error(exception) { "invoice ${invoice.id} failed because of a network error. ${if (i == MAX_ATTEMPTS - 1) "Aborting payment." else " retrying ${i + 1} / $MAX_ATTEMPTS"}" }
+                // we can implement exponential backoff, instead of trying a fixed amount of time.
+                if (attempt == attempts.last) throw exception // throw to outer scope
+                else logger.error(exception) { "invoice ${invoice.id} failed because of a network error. retrying $attempt / $MAX_ATTEMPTS"}
             }
         }
-
     }
 
-    fun chargeInvoices(invoices: List<Invoice>) = invoices.forEach { chargeInvoice(it) }
+    suspend fun chargeInvoices(invoices: List<Invoice>) {
+        coroutineScope {
+            invoices.forEach { invoice ->
+                // launching a job per invoice to allow for multithreading.
+                launch(Dispatchers.IO + createExceptionHandler(invoice)) {
+                    chargeInvoice(invoice)
+                }
+            }
+        }
+    }
+
+    private fun createExceptionHandler(invoice: Invoice) = CoroutineExceptionHandler { _, exception ->
+        when (exception) {
+            is CustomerNotFoundException ->
+                logger.error(exception) { "Invoice ${invoice.id} failed because customer ${invoice.customerId} doesn't exist. Aborting payment." }
+            is CurrencyMismatchException ->
+                logger.error(exception) { "Invoice ${invoice.id} failed because customer ${invoice.customerId} is using a different currency. Aborting payment." }
+            is InsufficientFundsException ->
+                logger.error(exception) { "Invoice ${invoice.id} failed due to insufficient funds." }
+            is NetworkException ->
+                logger.error(exception) { "Invoice ${invoice.id} failed because of a network error. Aborting payment."}
+            else ->
+                logger.error(exception) { "Unexpected error." }
+        }
+    }
 
     companion object {
         private val logger = KotlinLogging.logger {}

@@ -14,6 +14,7 @@ import io.pleo.antaeus.core.services.InvoiceService
 import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.data.CustomerTable
 import io.pleo.antaeus.data.InvoiceTable
+import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.rest.AntaeusRest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
