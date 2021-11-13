@@ -7,6 +7,7 @@
 
 package io.pleo.antaeus.app
 
+import createInvoices
 import getPaymentProvider
 import io.pleo.antaeus.core.services.BillingService
 import io.pleo.antaeus.core.services.CustomerService
@@ -15,8 +16,8 @@ import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.data.CustomerTable
 import io.pleo.antaeus.data.InvoiceTable
 import io.pleo.antaeus.rest.AntaeusRest
+import io.pleo.antaeus.scheduler.AntaeusScheduler
 import kotlinx.coroutines.*
-import millisUntilNextMonth
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.StdOutSqlLogger
@@ -65,7 +66,12 @@ fun main() {
     // This is _your_ billing service to be included where you see fit
     val billingService = BillingService(dal = dal, paymentProvider = paymentProvider)
 
-    scheduleMonthlyBilling(billingService, invoiceService)
+    val antaeusScheduler = AntaeusScheduler()
+
+    antaeusScheduler.scheduleEvery(AntaeusScheduler.TimeUnit.MONTH) {
+        billingService.chargeInvoices(invoiceService.fetchPending()).forEach { it.join() }
+        createInvoices(dal) // create invoices for next month
+    }
 
     // Create REST web service
     AntaeusRest(
@@ -73,14 +79,4 @@ fun main() {
         invoiceService = invoiceService,
         customerService = customerService
     ).run()
-}
-
-@OptIn(DelicateCoroutinesApi::class)
-fun scheduleMonthlyBilling(billingService: BillingService, invoiceService: InvoiceService) {
-    GlobalScope.launch(Dispatchers.Default) {
-        while (true) {
-            delay(millisUntilNextMonth)
-            billingService.chargeInvoices(invoiceService.fetchPending())
-        }
-    }
 }

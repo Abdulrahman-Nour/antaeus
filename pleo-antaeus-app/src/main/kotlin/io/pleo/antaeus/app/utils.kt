@@ -6,7 +6,6 @@ import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.models.InvoiceStatus
 import io.pleo.antaeus.models.Money
 import java.math.BigDecimal
-import java.util.*
 import kotlin.random.Random
 
 // This will create all schemas and setup initial data
@@ -31,6 +30,22 @@ internal fun setupInitialData(dal: AntaeusDal) {
     }
 }
 
+// this will mock the creation of new invoices
+internal fun createInvoices(dal: AntaeusDal) {
+    dal.fetchCustomers().forEach { customer ->
+        (1..10).forEach { _ ->
+            dal.createInvoice(
+                    amount = Money(
+                            value = BigDecimal(Random.nextDouble(10.0, 500.0)),
+                            currency = customer.currency
+                    ),
+                    customer = customer,
+                    status = InvoiceStatus.PENDING
+            )
+        }
+    }
+}
+
 // This is the mocked instance of the payment provider
 internal fun getPaymentProvider(): PaymentProvider {
     return object : PaymentProvider {
@@ -39,22 +54,3 @@ internal fun getPaymentProvider(): PaymentProvider {
         }
     }
 }
-
-internal val millisUntilNextMonth: Long
-    get() = timeNextMonthInMillis - timeNowInMillis
-
-private val timeNowInMillis: Long
-    get() = System.currentTimeMillis()
-
-private val timeNextMonthInMillis: Long
-    get() = Calendar.getInstance().apply {
-        // remove time component, so that invoices are charged at the start of the day
-        set(Calendar.HOUR_OF_DAY, getActualMinimum(Calendar.HOUR_OF_DAY))
-        set(Calendar.MINUTE, getActualMinimum(Calendar.MINUTE))
-        set(Calendar.SECOND, getActualMinimum(Calendar.SECOND))
-        set(Calendar.MILLISECOND, getActualMinimum(Calendar.MILLISECOND))
-
-        // set calendar instance to the first day of next month
-        set(Calendar.DAY_OF_MONTH, 1)
-        set(Calendar.MONTH, get(Calendar.MONTH) + 1)
-    }.timeInMillis
